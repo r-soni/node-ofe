@@ -11,29 +11,27 @@
 using namespace v8;
 
 class FileOutputStream: public OutputStream {
-  public:
-    FileOutputStream(FILE* stream): stream_(stream) { }
-    virtual int GetChunkSize() {
-      return 65536;
-    }
-    virtual void EndOfStream() { }
-    virtual WriteResult WriteAsciiChunk(char* data, int size) {
-      const size_t len = static_cast<size_t>(size);
-      size_t off = 0;
-      while (off < len && !feof(stream_) && !ferror(stream_))
-        off += fwrite(data + off, 1, len - off, stream_);
-      return off == len ? kContinue : kAbort;
-    }
+public:
+  FileOutputStream(FILE* stream): stream_(stream) { }
+  virtual int GetChunkSize() {
+    return 65536;
+  }
+  virtual void EndOfStream() { }
+  virtual WriteResult WriteAsciiChunk(char* data, int size) {
+    const size_t len = static_cast<size_t>(size);
+    size_t off = 0;
+    while (off < len && !feof(stream_) && !ferror(stream_))
+      off += fwrite(data + off, 1, len - off, stream_);
+    return off == len ? kContinue : kAbort;
+  }
 
-  private:
-    FILE* stream_;
+private:
+  FILE* stream_;
 };
 
-static void OnFatalError(const char* location, const char* message) {
+static void OnFatalError(const char* location, bool is_heap_oom) {
   if (location)
-    fprintf(stderr, "FATAL ERROR: %s %s\n", location, message);
-  else
-    fprintf(stderr, "FATAL ERROR: %s\n", message);
+    fprintf(stderr, "FATAL ERROR: %s\n", location);
 
   fprintf(stderr, "Generating HeapDump\n");
 
@@ -51,10 +49,10 @@ static void OnFatalError(const char* location, const char* message) {
   Isolate* isolate = Isolate::GetCurrent();
 #if NODE_VERSION_AT_LEAST(3, 0, 0)
   const HeapSnapshot* snap =
-      isolate->GetHeapProfiler()->TakeHeapSnapshot();
+  isolate->GetHeapProfiler()->TakeHeapSnapshot();
 #else
   const HeapSnapshot* snap =
-      isolate->GetHeapProfiler()->TakeHeapSnapshot(String::Empty(isolate));
+  isolate->GetHeapProfiler()->TakeHeapSnapshot(String::Empty(isolate));
 #endif
 #else
   const HeapSnapshot* snap = HeapProfiler::TakeSnapshot(String::Empty());
@@ -67,14 +65,14 @@ static void OnFatalError(const char* location, const char* message) {
 
 NAN_METHOD(Method) {
   Nan::HandleScope scope;
-  V8::SetFatalErrorHandler(OnFatalError);
+  Isolate* isolate = Isolate::GetCurrent();
+  isolate->SetOOMErrorHandler(OnFatalError);
   info.GetReturnValue().Set(Nan::New("done").ToLocalChecked());
 }
 
 void Init(Handle<Object> target) {
-  V8::SetFatalErrorHandler(OnFatalError);
   target->Set(Nan::New("call").ToLocalChecked(),
-      Nan::New<FunctionTemplate>(Method)->GetFunction());
+    Nan::New<FunctionTemplate>(Method)->GetFunction());
 }
 
 NODE_MODULE(ofe, Init)
